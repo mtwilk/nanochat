@@ -31,9 +31,9 @@ source .venv/bin/activate
 # wandb setup
 # If you wish to use wandb for logging (it's nice!, recommended).
 # 1) Make sure to first log in to wandb, e.g. run:
-#    `wandb login`
+   `wandb login`
 # 2) Set the WANDB_RUN environment variable when running this script, e.g.:
-#    `WANDB_RUN=d26 bash speedrun.sh`
+   `WANDB_RUN=d26 bash speedrun.sh`
 if [ -z "$WANDB_RUN" ]; then
     # by default use "dummy" : it's handled as a special case, skips logging to wandb
     WANDB_RUN=dummy
@@ -64,16 +64,16 @@ echo "Waiting for dataset download to complete..."
 wait $DATASET_DOWNLOAD_PID
 
 # d24 model (slightly undertrained to beat GPT-2 => decrease data:params ratio from compute optimal 10.5 (default) to 8)
-torchrun --standalone --nproc_per_node=8 -m scripts.base_train -- --depth=24 --target-param-data-ratio=8 --device-batch-size=16 --fp8 --run=$WANDB_RUN
+torchrun --standalone --nproc_per_node=1 -m scripts.base_train -- --depth=4 --target-param-data-ratio=8 --device-batch-size=16 --fp8 --window-pattern=L --run=$WANDB_RUN
 # evaluate the model: CORE metric, BPB on train/val, and draw samples
-torchrun --standalone --nproc_per_node=8 -m scripts.base_eval -- --device-batch-size=16
+torchrun --standalone --nproc_per_node=1 -m scripts.base_eval -- --device-batch-size=16
 
 # -----------------------------------------------------------------------------
 # SFT (teach the model conversation special tokens, tool use, multiple choice)
 
-# run SFT and eval the model
-torchrun --standalone --nproc_per_node=8 -m scripts.chat_sft -- --run=$WANDB_RUN
-torchrun --standalone --nproc_per_node=8 -m scripts.chat_eval -- -i sft
+# # run SFT and eval the model
+# torchrun --standalone --nproc_per_node=1 -m scripts.chat_sft -- --run=$WANDB_RUN
+# torchrun --standalone --nproc_per_node=1 -m scripts.chat_eval -- -i sft
 
 # chat with the model over CLI! Leave out the -p to chat interactively
 # python -m scripts.chat_cli -p "Why is the sky blue?"
