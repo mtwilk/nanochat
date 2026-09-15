@@ -10,4 +10,7 @@ To run our model pretraining we use the pretrain script (WIP needs to probably c
 ```bash
 bash runs/pretrain.sh
 ```
-Note that we do not run the expensive evaluation script by default as the assignment did not ask for it.
+Run on Windows with logging:
+```bash
+bash -c "WANDB_RUN=d26 bash runs/pretrain.sh"
+```
