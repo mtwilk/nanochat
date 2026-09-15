@@ -12,6 +12,7 @@ python -m scripts.base_train --depth=4 --max-seq-len=512 --device-batch-size=1 -
 """
 
 import os
+import csv
 os.environ["PYTORCH_ALLOC_CONF"] = "expandable_segments:True"
 import gc
 import json
@@ -70,6 +71,7 @@ parser.add_argument("--final-lr-frac", type=float, default=0.05, help="final LR 
 parser.add_argument("--resume-from-step", type=int, default=-1, help="resume training from this step (-1 = disable)")
 # Evaluation
 parser.add_argument("--eval-every", type=int, default=250, help="evaluate val bpb every N steps (-1 = disable)")
+parser.add_argument("--metrics-csv", type=str, default="", help="CSV file for step-wise train/val loss and bpb, written every eval_every steps (empty = <checkpoint_dir>/metrics.csv)")
 parser.add_argument("--eval-tokens", type=int, default=80*524288, help="number of tokens to evaluate val loss on")
 parser.add_argument("--core-metric-every", type=int, default=2000, help="evaluate CORE metric every N steps (-1 = disable)")
 parser.add_argument("--core-metric-max-per-task", type=int, default=500, help="examples per task for CORE metric")
@@ -396,6 +398,7 @@ if not resuming:
     val_bpb = None # will be set if eval_every > 0
     min_val_bpb = float("inf")
     smooth_train_loss = 0 # EMA of training loss
+    debiased_smooth_loss = None # no training step taken yet
     total_training_time = 0 # total wall-clock time of training
 else:
     step = meta_data["step"]
@@ -403,6 +406,7 @@ else:
     val_bpb = meta_data["val_bpb"]
     min_val_bpb = loop_state["min_val_bpb"]
     smooth_train_loss = loop_state["smooth_train_loss"]
+    debiased_smooth_loss = smooth_train_loss / (1 - 0.9**step) if step > 0 else None
     total_training_time = loop_state["total_training_time"]
 
 # Figure out the needed gradient accumulation micro-steps to reach the desired total batch size per step
@@ -413,6 +417,19 @@ grad_accum_steps = total_batch_size // world_tokens_per_fwdbwd
 print0(f"Tokens / micro-batch / rank: {args.device_batch_size} x {args.max_seq_len} = {tokens_per_fwdbwd:,}")
 print0(f"Tokens / micro-batch: {world_tokens_per_fwdbwd:,}")
 print0(f"Total batch size {total_batch_size:,} => gradient accumulation steps: {grad_accum_steps}")
+
+# Metrics CSV (master process only): one row per evaluation updated immediately; separate system from wandb for easy matplotlib conversion and plotting
+METRICS_FIELDS = ["step", "train_loss", "val_loss", "val_bpb", "train_eval_loss", "train_eval_bpb"]
+metrics_file, metrics_writer = None, None
+if master_process and args.eval_every > 0: # only log metrics if we are evaluating and on a single GPU (we can never know)
+    metrics_csv_path = args.metrics_csv if args.metrics_csv else os.path.join(checkpoint_dir, "metrics.csv")
+    os.makedirs(os.path.dirname(os.path.abspath(metrics_csv_path)), exist_ok=True)
+    append = resuming and os.path.exists(metrics_csv_path)
+    metrics_file = open(metrics_csv_path, "a" if append else "w", newline="")
+    metrics_writer = csv.DictWriter(metrics_file, fieldnames=METRICS_FIELDS)
+    if not append:
+        metrics_writer.writeheader()
+    print0(f"Logging metrics to {metrics_csv_path}")
 
 # Go!
 while True:
@@ -426,8 +443,8 @@ while True:
         train_eval_loader = build_train_eval_loader()
         eval_steps = args.eval_tokens // (args.device_batch_size * args.max_seq_len * ddp_world_size)
         with disable_fp8(model):
-            val_bpb = evaluate_bpb(model, val_loader, eval_steps, token_bytes)
-            train_eval_bpb = evaluate_bpb(model, train_eval_loader, eval_steps, token_bytes)
+            val_bpb, val_loss = evaluate_bpb(model, val_loader, eval_steps, token_bytes, return_loss=True)
+            train_eval_bpb, train_eval_loss = evaluate_bpb(model, train_eval_loader, eval_steps, token_bytes, return_loss=True)
         print0(f"Step {step:05d} | Validation bpb: {val_bpb:.6f}")
         if val_bpb < min_val_bpb:
             min_val_bpb = val_bpb
@@ -438,6 +455,18 @@ while True:
             "val/bpb": val_bpb,
             "train_eval_bpb": train_eval_bpb
         })
+        if metrics_writer is not None:
+            metrics_writer.writerow({
+                "step": step,
+                "total_training_flops": flops_so_far,
+                "total_training_time": total_training_time,
+                "train_loss": debiased_smooth_loss, # EMA of training loss up to step-1 (same as wandb train/loss); empty at step 0
+                "val_loss": val_loss,
+                "val_bpb": val_bpb,
+                "train_eval_loss": train_eval_loss,
+                "train_eval_bpb": train_eval_bpb,
+            })
+            metrics_file.flush()
         model.train()
 
     # once in a while: estimate the CORE metric (all ranks participate)
@@ -605,5 +634,7 @@ if val_bpb is not None:
     print0(f"Minimum validation bpb: {min_val_bpb:.6f}")
 
 # cleanup
+if metrics_file is not None:
+    metrics_file.close()
 wandb_run.finish() # wandb run finish
 compute_cleanup()
