@@ -419,7 +419,7 @@ print0(f"Tokens / micro-batch: {world_tokens_per_fwdbwd:,}")
 print0(f"Total batch size {total_batch_size:,} => gradient accumulation steps: {grad_accum_steps}")
 
 # Metrics CSV (master process only): one row per evaluation updated immediately; separate system from wandb for easy matplotlib conversion and plotting
-METRICS_FIELDS = ["step", "train_loss", "val_loss", "val_bpb", "train_eval_loss", "train_eval_bpb"]
+METRICS_FIELDS = ["step", "total_training_flops", "total_training_time", "train_loss", "val_loss", "val_bpb", "train_eval_loss", "train_eval_bpb"]
 metrics_file, metrics_writer = None, None
 if master_process and args.eval_every > 0: # only log metrics if we are evaluating and on a single GPU (we can never know)
     metrics_csv_path = args.metrics_csv if args.metrics_csv else os.path.join(checkpoint_dir, "metrics.csv")
