@@ -1,3 +1,5 @@
+
+
 #!/bin/bash
 
 # This script is configured to train your own GPT-2 grade LLM (pretraining + finetuning)
@@ -59,16 +61,12 @@ python -m scripts.tok_train
 python -m scripts.tok_eval
 
 # -----------------------------------------------------------------------------
-# Base model (pretraining)
-echo "Waiting for dataset download to complete..."
-wait $DATASET_DOWNLOAD_PID
+# SFT (teach the model conversation special tokens, tool use, multiple choice)
 
-# d24 model (slightly undertrained to beat GPT-2 => decrease data:params ratio from compute optimal 10.5 (default) to 8)
-python -m scripts.base_train --depth=4 --target-param-data-ratio=8 --device-batch-size=4 --window-pattern=L --run=$WANDB_RUN --eval-every=10 --model-tag=pretrained_depth_4
-# evaluate the model: draw samples
-# python -m scripts.base_eval --device-batch-size=16
-python -m scripts.base_eval --device-batch-size=16 --eval=sample --model-tag=pretrained_depth_4
-# plot the train/val bpb curves logged during training
-python -m scripts.plot_bpb --model-tag=pretrained_depth_4
+# run SFT and eval the model
+torchrun --standalone --nproc_per_node=1 -m scripts.chat_mid_training -- --model-tag=pretrained_depth_4 --run=$WANDB_RUN --chatcore-every=-1
+torchrun --standalone --nproc_per_node=1 -m scripts.chat_eval -- -i sft -g pretrained_depth_4_mid_training -a "ARC-Easy|ARC-Challenge|GSM8K"
 
 
+# chat with the model over CLI! Leave out the -p to chat interactively
+# python -m scripts.chat_cli -p "Why is the sky blue?"
