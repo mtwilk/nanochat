@@ -40,6 +40,25 @@ print(smoltalk[0])
 "
 ```
 
+MMLU auxiliary_train statistics (answer letter distribution, subjects, question length):
+```bash
+source .venv/bin/activate
+python -c "
+import statistics
+from collections import Counter
+from tasks.common import load_hub_dataset
+
+table = load_hub_dataset('cais/mmlu', 'all', split='auxiliary_train').table
+n = table.num_rows
+answers = Counter(table['answer'].to_pylist())
+print(f'rows: {n:,}')
+for i, letter in enumerate('ABCD'):
+    print(f'{letter}: {100 * answers[i] / n:.1f}%')
+print('distinct subjects:', set(table['subject'].to_pylist()))
+print('median question chars:', statistics.median(len(q) for q in table['question'].to_pylist()))
+"
+```
+
 Stage 1: mid training finetuning:
 ```bash
 bash -c "WANDB_RUN=d4 bash runs/mid_training_fine_tuning.sh"
@@ -48,4 +67,10 @@ bash -c "WANDB_RUN=d4 bash runs/mid_training_fine_tuning.sh"
 Stage 2: supervised finetuning:
 ```bash
 bash -c "WANDB_RUN=d4 bash runs/supervised_fine_tuning.sh"
+```
+
+## Task 4
+Run the model with different temperature settings to compare the differences in outputs:
+```bash
+bash runs/chat_cli.sh
 ```
