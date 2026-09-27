@@ -31,9 +31,9 @@ source .venv/bin/activate
 # wandb setup
 # If you wish to use wandb for logging (it's nice!, recommended).
 # 1) Make sure to first log in to wandb, e.g. run:
-   `wandb login`
+#    `wandb login`
 # 2) Set the WANDB_RUN environment variable when running this script, e.g.:
-   `WANDB_RUN=pretrain_d4 bash pretrain.sh`
+#    `WANDB_RUN=pretrain_d4 bash runs/pretrain.sh`
 if [ -z "$WANDB_RUN" ]; then
     # by default use "dummy" : it's handled as a special case, skips logging to wandb
     WANDB_RUN=dummy
@@ -64,7 +64,7 @@ echo "Waiting for dataset download to complete..."
 wait $DATASET_DOWNLOAD_PID
 
 # d24 model (slightly undertrained to beat GPT-2 => decrease data:params ratio from compute optimal 10.5 (default) to 8)
-python -m scripts.base_train --depth=4 --target-param-data-ratio=8 --device-batch-size=4 --window-pattern=L --run=$WANDB_RUN --eval-every=10 --model-tag=pretrained_depth_4
+python -m scripts.base_train --depth=4 --target-param-data-ratio=10.5 --device-batch-size=4 --window-pattern=L --run=$WANDB_RUN --eval-every=10 --model-tag=pretrained_depth_4
 # evaluate the model: draw samples
 # python -m scripts.base_eval --device-batch-size=16
 python -m scripts.base_eval --device-batch-size=16 --eval=sample --model-tag=pretrained_depth_4
