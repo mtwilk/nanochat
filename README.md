@@ -69,6 +69,11 @@ Stage 2: supervised finetuning:
 bash -c "WANDB_RUN=d4 bash runs/supervised_fine_tuning.sh"
 ```
 
+Evaluate pretraining for the benchmark comparison:
+```bash
+bash runs/eval_pretrain.sh
+```
+
 ## Task 4
 Run the model with different temperature settings to compare the differences in outputs:
 ```bash
